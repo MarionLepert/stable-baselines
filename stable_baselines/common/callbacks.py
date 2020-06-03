@@ -100,6 +100,12 @@ class BaseCallback(ABC):
     def _on_rollout_end(self) -> None:
         pass
 
+    def on_episode_end(self) -> None:
+        self._on_episode_end()
+
+    def _on_episode_end(self) -> None: 
+        pass
+
 
 class EventCallback(BaseCallback):
     """
@@ -172,6 +178,10 @@ class CallbackList(BaseCallback):
     def _on_training_end(self) -> None:
         for callback in self.callbacks:
             callback.on_training_end()
+
+    def _on_episode_end(self) -> None:
+        for callback in self.callbacks:
+            callback.on_episode_end()
 
 
 class CheckpointCallback(BaseCallback):

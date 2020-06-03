@@ -252,7 +252,18 @@ class SAC(OffPolicyRLModel):
                     # Policy train op
                     # (has to be separate from value train op, because min_qf_pi appears in policy_loss)
                     policy_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate_ph)
-                    policy_train_op = policy_optimizer.minimize(policy_loss, var_list=tf_util.get_trainable_vars('model/pi'))
+                    # policy_train_op = policy_optimizer.minimize(policy_loss, var_list=tf_util.get_trainable_vars('model/pi'))
+
+                    policy_train_op = tf.contrib.layers.optimize_loss(
+                        policy_loss,
+                        None,
+                        self.learning_rate_ph,
+                        "Adam",
+                        variables=tf_util.get_trainable_vars('model/pi'),
+                        summaries=["gradients"],
+                        increment_global_step=False
+                    )
+
 
                     # Value train op
                     value_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate_ph)
@@ -302,6 +313,11 @@ class SAC(OffPolicyRLModel):
 
                     tf.summary.scalar('learning_rate', tf.reduce_mean(self.learning_rate_ph))
 
+
+                    for var in tf.trainable_variables():
+                        tf.summary.histogram(var.name, var)
+                
+
                 # Retrieve parameters that must be saved
                 self.params = tf_util.get_trainable_vars("model")
                 self.target_params = tf_util.get_trainable_vars("target/values_fn")
@@ -337,6 +353,7 @@ class SAC(OffPolicyRLModel):
             out = self.sess.run([self.summary] + self.step_ops, feed_dict)
             summary = out.pop(0)
             writer.add_summary(summary, step)
+
         else:
             out = self.sess.run(self.step_ops, feed_dict)
 
@@ -387,6 +404,8 @@ class SAC(OffPolicyRLModel):
             callback.on_rollout_start()
 
             for step in range(total_timesteps):
+                if self.num_timesteps == self.learning_starts: 
+                    print("HOOOOOOORAH")
                 # Before training starts, randomly sample actions
                 # from a uniform distribution for better exploration.
                 # Afterwards, use the learned policy
@@ -472,6 +491,8 @@ class SAC(OffPolicyRLModel):
 
                 episode_rewards[-1] += reward_
                 if done:
+                    callback.on_episode_end()
+
                     if self.action_noise is not None:
                         self.action_noise.reset()
                     if not isinstance(self.env, VecEnv):
@@ -481,6 +502,7 @@ class SAC(OffPolicyRLModel):
                     maybe_is_success = info.get('is_success')
                     if maybe_is_success is not None:
                         episode_successes.append(float(maybe_is_success))
+
 
                 if len(episode_rewards[-101:-1]) == 0:
                     mean_reward = -np.inf

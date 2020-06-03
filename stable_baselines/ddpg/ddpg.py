@@ -931,6 +931,7 @@ class DDPG(OffPolicyRLModel):
                                                                     writer, self.num_timesteps)
 
                             if done:
+                                callback.on_episode_end()
                                 # Episode done.
                                 epoch_episode_rewards.append(episode_reward)
                                 episode_rewards_history.append(episode_reward)
