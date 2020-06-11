@@ -170,6 +170,10 @@ class SAC(OffPolicyRLModel):
                     #  Use two Q-functions to improve performance by reducing overestimation bias.
                     qf1, qf2, value_fn = self.policy_tf.make_critics(self.processed_obs_ph, self.actions_ph,
                                                                      create_qf=True, create_vf=True)
+
+                    self._qf1 = qf1
+                    self._qf2 = qf2
+
                     qf1_pi, qf2_pi, _ = self.policy_tf.make_critics(self.processed_obs_ph,
                                                                     policy_out, create_qf=True, create_vf=False,
                                                                     reuse=True)
@@ -252,17 +256,17 @@ class SAC(OffPolicyRLModel):
                     # Policy train op
                     # (has to be separate from value train op, because min_qf_pi appears in policy_loss)
                     policy_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate_ph)
-                    # policy_train_op = policy_optimizer.minimize(policy_loss, var_list=tf_util.get_trainable_vars('model/pi'))
+                    policy_train_op = policy_optimizer.minimize(policy_loss, var_list=tf_util.get_trainable_vars('model/pi'))
 
-                    policy_train_op = tf.contrib.layers.optimize_loss(
-                        policy_loss,
-                        None,
-                        self.learning_rate_ph,
-                        "Adam",
-                        variables=tf_util.get_trainable_vars('model/pi'),
-                        summaries=["gradients"],
-                        increment_global_step=False
-                    )
+                    # policy_train_op = tf.contrib.layers.optimize_loss(
+                    #     policy_loss,
+                    #     None,
+                    #     self.learning_rate_ph,
+                    #     "Adam",
+                    #     variables=tf_util.get_trainable_vars('model/pi'),
+                    #     summaries=["gradients"],
+                    #     increment_global_step=False
+                    # )
 
 
                     # Value train op
@@ -314,8 +318,8 @@ class SAC(OffPolicyRLModel):
                     tf.summary.scalar('learning_rate', tf.reduce_mean(self.learning_rate_ph))
 
 
-                    for var in tf.trainable_variables():
-                        tf.summary.histogram(var.name, var)
+                    # for var in tf.trainable_variables():
+                    #     tf.summary.histogram(var.name, var)
                 
 
                 # Retrieve parameters that must be saved
@@ -328,6 +332,7 @@ class SAC(OffPolicyRLModel):
                     self.sess.run(target_init_op)
 
                 self.summary = tf.summary.merge_all()
+
 
     def _train_step(self, step, writer, learning_rate):
         # Sample a batch from the replay buffer
@@ -342,6 +347,8 @@ class SAC(OffPolicyRLModel):
             self.terminals_ph: batch_dones.reshape(self.batch_size, -1),
             self.learning_rate_ph: learning_rate
         }
+
+        # self.get_values_at_state(batch_obs[0])
 
         # out  = [policy_loss, qf1_loss, qf2_loss,
         #         value_loss, qf1, qf2, value_fn, logp_pi,
@@ -405,7 +412,7 @@ class SAC(OffPolicyRLModel):
 
             for step in range(total_timesteps):
                 if self.num_timesteps == self.learning_starts: 
-                    print("HOOOOOOORAH")
+                    print("START LEARNING")
                 # Before training starts, randomly sample actions
                 # from a uniform distribution for better exploration.
                 # Afterwards, use the learned policy
@@ -556,6 +563,37 @@ class SAC(OffPolicyRLModel):
             actions = actions[0]
 
         return actions, None
+
+    def get_values_at_state(self, state):
+
+        from itertools import product
+
+        num_actions = self.action_space.shape[0]
+        all_action_coords = []
+        for a in range(num_actions):
+            action_coords = np.linspace(self.action_space.low[a], self.action_space.high[a], 25)
+            all_action_coords.append(action_coords)
+
+        all_action_possibilities = np.array(tuple(product(*all_action_coords)))
+        
+        obs = np.tile(state, (len(all_action_possibilities),1))
+
+        feed_dict = {
+            self.observations_ph: obs,
+            self.actions_ph: all_action_possibilities,
+            # self.next_observations_ph: batch_next_obs,
+            # self.rewards_ph: batch_rewards.reshape(self.batch_size, -1),
+            # self.terminals_ph: batch_dones.reshape(self.batch_size, -1),
+            # self.learning_rate_ph: learning_rate
+        }
+
+        q_values_1 = self.sess.run(self._qf1, feed_dict=feed_dict)
+        q_values_2 = self.sess.run(self._qf2, feed_dict=feed_dict)
+
+        q_value = np.array([q_values_1, q_values_2]).min(axis=0)
+
+        return q_value, all_action_possibilities
+
 
     def get_parameter_list(self):
         return (self.params +
