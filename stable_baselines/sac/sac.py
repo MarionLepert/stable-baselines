@@ -173,6 +173,7 @@ class SAC(OffPolicyRLModel):
 
                     self._qf1 = qf1
                     self._qf2 = qf2
+                    self._value_fn = value_fn
 
                     qf1_pi, qf2_pi, _ = self.policy_tf.make_critics(self.processed_obs_ph,
                                                                     policy_out, create_qf=True, create_vf=False,
@@ -564,7 +565,17 @@ class SAC(OffPolicyRLModel):
 
         return actions, None
 
-    def get_values_at_state(self, state):
+    def get_value_at_state(self,state): 
+
+        feed_dict = {
+            self.observations_ph: obs
+        }
+
+        value = self.sess.run(self._value_fn, feed_dict=feed_dict)
+
+        return value 
+
+    def get_qvalues_at_state(self, state):
 
         from itertools import product
 
