@@ -568,7 +568,7 @@ class SAC(OffPolicyRLModel):
     def get_value_at_state(self,state): 
 
         feed_dict = {
-            self.observations_ph: obs
+            self.observations_ph: state
         }
 
         value = self.sess.run(self._value_fn, feed_dict=feed_dict)
