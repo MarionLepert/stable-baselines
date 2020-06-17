@@ -12,6 +12,7 @@ from stable_baselines.common.buffers import ReplayBuffer
 from stable_baselines.sac.policies import SACPolicy
 from stable_baselines import logger
 
+import time
 
 class SAC(OffPolicyRLModel):
     """
@@ -411,7 +412,9 @@ class SAC(OffPolicyRLModel):
             callback.on_training_start(locals(), globals())
             callback.on_rollout_start()
 
+
             for step in range(total_timesteps):
+                start_time = time.time()
                 if self.num_timesteps == self.learning_starts: 
                     print("START LEARNING")
                 # Before training starts, randomly sample actions
@@ -475,6 +478,7 @@ class SAC(OffPolicyRLModel):
 
                     mb_infos_vals = []
                     # Update policy, critics and target networks
+                    learnStartTime = time.time()
                     for grad_step in range(self.gradient_steps):
                         # Break if the warmup phase is not over
                         # or if there are not enough samples in the replay buffer
@@ -491,6 +495,9 @@ class SAC(OffPolicyRLModel):
                         if (step + grad_step) % self.target_update_interval == 0:
                             # Update target network
                             self.sess.run(self.target_update_op)
+                    learnEndTime = time.time() - learnStartTime
+                    learnTimeSummary = tf.Summary(value=[tf.Summary.Value(tag='learnTime', simple_value=learnEndTime)])
+                    writer.add_summary(learnTimeSummary, step)
                     # Log losses and entropy, useful for monitor training
                     if len(mb_infos_vals) > 0:
                         infos_values = np.mean(mb_infos_vals, axis=0)
@@ -539,6 +546,10 @@ class SAC(OffPolicyRLModel):
                     logger.dumpkvs()
                     # Reset infos:
                     infos_values = []
+                end_time = time.time()-start_time
+                timeSummary = tf.Summary(value=[tf.Summary.Value(tag='trainTime', simple_value=end_time)])
+                writer.add_summary(timeSummary, step)
+
             callback.on_training_end()
             return self
 
