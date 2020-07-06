@@ -4,6 +4,12 @@ import warnings
 import numpy as np
 import tensorflow as tf
 
+import logging 
+logging.getLogger("tensorflow").setLevel(logging.ERROR)
+
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
 from stable_baselines.common import tf_util, OffPolicyRLModel, SetVerbosity, TensorboardWriter
 from stable_baselines.common.vec_env import VecEnv
 from stable_baselines.common.math_util import safe_mean, unscale_action, scale_action
@@ -13,6 +19,7 @@ from stable_baselines.sac.policies import SACPolicy
 from stable_baselines import logger
 
 import time
+from memory_profiler import profile 
 
 class SAC(OffPolicyRLModel):
     """
@@ -65,7 +72,7 @@ class SAC(OffPolicyRLModel):
                  gradient_steps=1, target_entropy='auto', action_noise=None,
                  random_exploration=0.0, verbose=0, tensorboard_log=None,
                  _init_setup_model=True, policy_kwargs=None, full_tensorboard_log=False,
-                 seed=None, n_cpu_tf_sess=None):
+                 seed=None, n_cpu_tf_sess=None, pretrained_model=False, config=None):
 
         super(SAC, self).__init__(policy=policy, env=env, replay_buffer=None, verbose=verbose,
                                   policy_base=SACPolicy, requires_vec_env=False, policy_kwargs=policy_kwargs,
@@ -121,6 +128,11 @@ class SAC(OffPolicyRLModel):
         self.processed_next_obs_ph = None
         self.log_ent_coef = None
 
+        self.pretrained_model = pretrained_model
+        self.config = config
+
+        self.data_counter = 0
+
         if _init_setup_model:
             self.setup_model()
 
@@ -141,10 +153,10 @@ class SAC(OffPolicyRLModel):
 
                 with tf.variable_scope("input", reuse=False):
                     # Create policy and target TF objects
-                    self.policy_tf = self.policy(self.sess, self.observation_space, self.action_space,
-                                                 **self.policy_kwargs)
+                    self.policy_tf = self.policy(self.sess, self.observation_space, self.action_space, 
+                                                config=self.config, **self.policy_kwargs)
                     self.target_policy = self.policy(self.sess, self.observation_space, self.action_space,
-                                                     **self.policy_kwargs)
+                                                     config=self.config, **self.policy_kwargs)
 
                     # Initialize Placeholders
                     self.observations_ph = self.policy_tf.obs_ph
@@ -331,7 +343,39 @@ class SAC(OffPolicyRLModel):
                 # Initialize Variables and target network
                 with self.sess.as_default():
                     self.sess.run(tf.global_variables_initializer())
+
+                    if self.pretrained_model: 
+                        list_of_vars_to_load = ['cnn_model/BatchNorm/beta',
+                                                'cnn_model/BatchNorm/moving_mean',
+                                                'cnn_model/BatchNorm/moving_variance',
+                                                'cnn_model/c1/w',
+                                                'cnn_model/c1/b',
+                                                'cnn_model/c2/w',
+                                                'cnn_model/c2/b',
+                                                'cnn_model/c3/w',
+                                                'cnn_model/c3/b',
+                                                'cnn_model/fc1/w',
+                                                'cnn_model/fc1/b',
+                                                'cnn_model/dense/kernel',
+                                                'cnn_model/dense/bias']
+
+                        def _load_vars(var_dict, ckpt_path):
+                            saver = tf.train.Saver(var_list=var_dict)
+                            ckpt  = tf.train.get_checkpoint_state(ckpt_path)
+                            saver.restore(self.sess, ckpt.model_checkpoint_path)
+
+                        all_tensors = [x.op.name for x in tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)]
+                        # all_tensors = [x.op.name for x in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)]
+
+                        var_dict_pi = {x: self.graph.get_tensor_by_name(f"model/pi/{x}:0")  for x in list_of_vars_to_load if f"model/pi/{x}" in all_tensors}
+                        var_dict_values_fn ={x: self.graph.get_tensor_by_name(f"model/values_fn/{x}:0")  for x in list_of_vars_to_load if f"model/values_fn/{x}" in all_tensors}
+
+
+                        _load_vars(var_dict_pi, self.pretrained_model)
+                        _load_vars(var_dict_values_fn, self.pretrained_model)
+                    
                     self.sess.run(target_init_op)
+
 
                 self.summary = tf.summary.merge_all()
 
@@ -339,7 +383,7 @@ class SAC(OffPolicyRLModel):
     def _train_step(self, step, writer, learning_rate):
         # Sample a batch from the replay buffer
         batch = self.replay_buffer.sample(self.batch_size, env=self._vec_normalize_env)
-        batch_obs, batch_actions, batch_rewards, batch_next_obs, batch_dones = batch
+        batch_obs, batch_actions, batch_rewards, batch_next_obs, batch_dones, batch_objStates = batch
 
         feed_dict = {
             self.observations_ph: batch_obs,
@@ -359,7 +403,16 @@ class SAC(OffPolicyRLModel):
         # Do one gradient step
         # and optionally compute log for tensorboard
         if writer is not None:
-            out = self.sess.run([self.summary] + self.step_ops, feed_dict)
+            out = self.sess.run([self.summary] + self.step_ops + [self.policy_tf.model.layer_9], feed_dict)
+            coordinates_dict = {0: "X", 1: "Y", 2:"Theta", 3:"dX", 4:"dY", 5:"dTheta"}
+            num_coords = 6
+            for i in range(self.batch_size): 
+                for coord in range(num_coords): 
+                    diff = out[-1][i,coord] - batch_objStates[i][coord]
+                    coord_summary = tf.Summary(value=[tf.Summary.Value(tag=coordinates_dict[coord], simple_value=diff)])
+                    writer.add_summary(coord_summary, self.data_counter)
+                self.data_counter += 1
+
             summary = out.pop(0)
             writer.add_summary(summary, step)
 
@@ -376,6 +429,7 @@ class SAC(OffPolicyRLModel):
             return policy_loss, qf1_loss, qf2_loss, value_loss, entropy, ent_coef_loss, ent_coef
 
         return policy_loss, qf1_loss, qf2_loss, value_loss, entropy
+
 
     def learn(self, total_timesteps, callback=None,
               log_interval=4, tb_log_name="SAC", reset_num_timesteps=True, replay_wrapper=None):
@@ -412,9 +466,8 @@ class SAC(OffPolicyRLModel):
             callback.on_training_start(locals(), globals())
             callback.on_rollout_start()
 
-
             for step in range(total_timesteps):
-                start_time = time.time()
+                # start_time = time.time()
                 if self.num_timesteps == self.learning_starts: 
                     print("START LEARNING")
                 # Before training starts, randomly sample actions
@@ -437,7 +490,7 @@ class SAC(OffPolicyRLModel):
 
                 assert action.shape == self.env.action_space.shape
 
-                new_obs, reward, done, info = self.env.step(unscaled_action)
+                new_obs, reward, done, info, objState = self.env.step(unscaled_action)
 
                 self.num_timesteps += 1
 
@@ -455,7 +508,7 @@ class SAC(OffPolicyRLModel):
                     obs_, new_obs_, reward_ = obs, new_obs, reward
 
                 # Store transition in the replay buffer.
-                self.replay_buffer_add(obs_, action, reward_, new_obs_, done, info)
+                self.replay_buffer_add(obs_, action, reward_, new_obs_, done, info, objState)
                 obs = new_obs
                 # Save the unnormalized observation
                 if self._vec_normalize_env is not None:
@@ -478,7 +531,7 @@ class SAC(OffPolicyRLModel):
 
                     mb_infos_vals = []
                     # Update policy, critics and target networks
-                    learnStartTime = time.time()
+                    # learnStartTime = time.time()
                     for grad_step in range(self.gradient_steps):
                         # Break if the warmup phase is not over
                         # or if there are not enough samples in the replay buffer
@@ -495,9 +548,11 @@ class SAC(OffPolicyRLModel):
                         if (step + grad_step) % self.target_update_interval == 0:
                             # Update target network
                             self.sess.run(self.target_update_op)
-                    learnEndTime = time.time() - learnStartTime
-                    learnTimeSummary = tf.Summary(value=[tf.Summary.Value(tag='learnTime', simple_value=learnEndTime)])
-                    writer.add_summary(learnTimeSummary, step)
+
+                    # learnEndTime = time.time() - learnStartTime
+                    # learnTimeSummary = tf.Summary(value=[tf.Summary.Value(tag='learnTime', simple_value=learnEndTime)])
+                    # writer.add_summary(learnTimeSummary, step)
+                    
                     # Log losses and entropy, useful for monitor training
                     if len(mb_infos_vals) > 0:
                         infos_values = np.mean(mb_infos_vals, axis=0)
@@ -517,7 +572,6 @@ class SAC(OffPolicyRLModel):
                     maybe_is_success = info.get('is_success')
                     if maybe_is_success is not None:
                         episode_successes.append(float(maybe_is_success))
-
 
                 if len(episode_rewards[-101:-1]) == 0:
                     mean_reward = -np.inf
@@ -546,9 +600,9 @@ class SAC(OffPolicyRLModel):
                     logger.dumpkvs()
                     # Reset infos:
                     infos_values = []
-                end_time = time.time()-start_time
-                timeSummary = tf.Summary(value=[tf.Summary.Value(tag='trainTime', simple_value=end_time)])
-                writer.add_summary(timeSummary, step)
+                # end_time = time.time()-start_time
+                # timeSummary = tf.Summary(value=[tf.Summary.Value(tag='trainTime', simple_value=end_time)])
+                # writer.add_summary(timeSummary, step)
 
             callback.on_training_end()
             return self
@@ -646,7 +700,9 @@ class SAC(OffPolicyRLModel):
             "action_noise": self.action_noise,
             "random_exploration": self.random_exploration,
             "_vectorize_action": self._vectorize_action,
-            "policy_kwargs": self.policy_kwargs
+            "policy_kwargs": self.policy_kwargs, 
+            "config": self.config, 
+            "pretrained_model": "/Users/marion/mnt/ws/planet/" + self.pretrained_model
         }
 
         params_to_save = self.get_parameters()

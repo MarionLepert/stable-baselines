@@ -22,6 +22,8 @@ from stable_baselines.common.callbacks import BaseCallback, CallbackList, Conver
 from stable_baselines import logger
 
 
+import sys 
+
 class BaseRLModel(ABC):
     """
     The base RL model
@@ -940,12 +942,13 @@ class ActorCriticRLModel(BaseRLModel):
                              "Stored kwargs: {}, specified kwargs: {}".format(data['policy_kwargs'],
                                                                               kwargs['policy_kwargs']))
 
+        import pdb; pdb.set_trace()
+
         model = cls(policy=data["policy"], env=None, _init_setup_model=False)
         model.__dict__.update(data)
         model.__dict__.update(kwargs)
         model.set_env(env)
         model.setup_model()
-
         model.load_parameters(params)
 
         return model
@@ -989,7 +992,7 @@ class OffPolicyRLModel(BaseRLModel):
         from stable_baselines.her.replay_buffer import HindsightExperienceReplayWrapper
         return isinstance(self.replay_buffer, HindsightExperienceReplayWrapper)
 
-    def replay_buffer_add(self, obs_t, action, reward, obs_tp1, done, info):
+    def replay_buffer_add(self, obs_t, action, reward, obs_tp1, done, info, objState):
         """
         Add a new transition to the replay buffer
 
@@ -999,10 +1002,12 @@ class OffPolicyRLModel(BaseRLModel):
         :param obs_tp1: (np.ndarray) the new observation
         :param done: (bool) is the episode done
         :param info: (dict) extra values used to compute the reward when using HER
+        :param info: (np.ndarray) object state [x, y, theta, dx, dy, dtheta]
         """
         # Pass info dict when using HER, as it can be used to compute the reward
         kwargs = dict(info=info) if self.is_using_her() else {}
-        self.replay_buffer.add(obs_t, action, reward, obs_tp1, float(done), **kwargs)
+        self.replay_buffer.add(obs_t, action, reward, obs_tp1, float(done), objState, **kwargs)
+
 
     @abstractmethod
     def setup_model(self):

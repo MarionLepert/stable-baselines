@@ -1,0 +1,36 @@
+{
+	"run_params": {
+		"num_timesteps": 1e7, 
+		"learning_rate": 0.0003, 
+		"learning_starts": 1000,
+		"batch_size": 32, 
+		"buffer_size": 1e5, 
+		"policy": "CnnPolicy", 
+		"policy_layers": [640,640]
+	}, 
+	"cnn_params" : {
+		"l1" : {
+			"n_filters": 32, 
+			"filter_size": 3, 
+			"stride": 1, 
+			"init_scale": 1.414
+		}, 
+		"l2" : {
+			"n_filters": 64, 
+			"filter_size": 3, 
+			"stride": 1, 
+			"init_scale": 1.414
+		}, 
+		"l3" : {
+			"n_filters": 64, 
+			"filter_size": 3, 
+			"stride": 1, 
+			"init_scale": 1.414
+		},
+		"fc": {
+			"n_hidden": 50, 
+			"init_scale": 1.414
+		}
+	}
+
+}

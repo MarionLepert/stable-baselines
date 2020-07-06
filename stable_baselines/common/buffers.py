@@ -50,7 +50,7 @@ class ReplayBuffer(object):
         """
         return len(self) == self.buffer_size
 
-    def add(self, obs_t, action, reward, obs_tp1, done):
+    def add(self, obs_t, action, reward, obs_tp1, done, objState):
         """
         add a new transition to the buffer
 
@@ -59,8 +59,9 @@ class ReplayBuffer(object):
         :param reward: (float) the reward of the transition
         :param obs_tp1: (Union[np.ndarray, int]) the current observation
         :param done: (bool) is the episode done
+        :param info: (np.ndarray) object state [x, y, theta, dx, dy, dtheta]
         """
-        data = (obs_t, action, reward, obs_tp1, done)
+        data = (obs_t, action, reward, obs_tp1, done, objState)
 
         if self._next_idx >= len(self._storage):
             self._storage.append(data)
@@ -109,20 +110,21 @@ class ReplayBuffer(object):
         return reward
 
     def _encode_sample(self, idxes: Union[List[int], np.ndarray], env: Optional[VecNormalize] = None):
-        obses_t, actions, rewards, obses_tp1, dones = [], [], [], [], []
+        obses_t, actions, rewards, obses_tp1, dones, objStates = [], [], [], [], [], []
         for i in idxes:
             data = self._storage[i]
-            obs_t, action, reward, obs_tp1, done = data
+            obs_t, action, reward, obs_tp1, done, objState = data
             obses_t.append(np.array(obs_t, copy=False))
             actions.append(np.array(action, copy=False))
             rewards.append(reward)
             obses_tp1.append(np.array(obs_tp1, copy=False))
             dones.append(done)
+            objStates.append(objState)
         return (self._normalize_obs(np.array(obses_t), env),
                 np.array(actions),
                 self._normalize_reward(np.array(rewards), env),
                 self._normalize_obs(np.array(obses_tp1), env),
-                np.array(dones))
+                np.array(dones),objStates)
 
     def sample(self, batch_size: int, env: Optional[VecNormalize] = None, **_kwargs):
         """

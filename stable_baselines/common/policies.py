@@ -12,21 +12,77 @@ from stable_baselines.common.distributions import make_proba_dist_type, Categori
     MultiCategoricalProbabilityDistribution, DiagGaussianProbabilityDistribution, BernoulliProbabilityDistribution
 from stable_baselines.common.input import observation_input
 
+import json 
 
 def nature_cnn(scaled_images, **kwargs):
-    """
-    CNN from Nature paper.
 
-    :param scaled_images: (TensorFlow Tensor) Image input placeholder
-    :param kwargs: (dict) Extra keywords parameters for the convolutional layers of the CNN
-    :return: (TensorFlow Tensor) The CNN output layer
-    """
-    activ = tf.nn.relu
-    layer_1 = activ(conv(scaled_images, 'c1', n_filters=4, filter_size=8, stride=4, init_scale=np.sqrt(2), **kwargs))
-    layer_2 = activ(conv(layer_1, 'c2', n_filters=8, filter_size=4, stride=2, init_scale=np.sqrt(2), **kwargs))
-    layer_3 = activ(conv(layer_2, 'c3', n_filters=8, filter_size=3, stride=1, init_scale=np.sqrt(2), **kwargs))
-    layer_3 = conv_to_fc(layer_3)
-    return activ(linear(layer_3, 'fc1', n_hidden=10, init_scale=np.sqrt(2)))
+    with open('../stable-baselines/config.json', 'r') as f: 
+        config = json.load(f)
+
+    with tf.variable_scope("model", reuse=False): 
+
+        activ = tf.nn.relu
+        scaled_images = tf.contrib.layers.batch_norm(scaled_images)
+        layer_1 = activ(conv(scaled_images, 'c1', n_filters=config['cnn_params']['l1']['n_filters'], 
+            filter_size=config['cnn_params']['l1']['filter_size'], stride=config['cnn_params']['l1']['stride'], 
+            init_scale=config['cnn_params']['l1']['init_scale'], **kwargs))
+
+        layer_2 = tf.nn.max_pool(value=layer_1, ksize=2, strides=[1,2,2,1], padding='VALID', data_format='NHWC')
+
+        # self.layer_2 = tf.contrib.layers.batch_norm(self.layer_2)
+
+        layer_3 = activ(conv(layer_2, 'c2', n_filters=config['cnn_params']['l2']['n_filters'], 
+            filter_size=config['cnn_params']['l2']['filter_size'], stride=config['cnn_params']['l2']['stride'], 
+            init_scale=config['cnn_params']['l2']['init_scale'], **kwargs))
+
+        layer_4 = tf.nn.max_pool(value=layer_3, ksize=2, strides=[1,2,2,1], padding='VALID', data_format='NHWC')
+
+        # self.layer_4 = tf.contrib.layers.batch_norm(self.layer_4)
+
+        layer_5 = activ(conv(layer_4, 'c3', n_filters=config['cnn_params']['l3']['n_filters'], 
+            filter_size=config['cnn_params']['l3']['filter_size'], stride=config['cnn_params']['l3']['stride'], 
+            init_scale=config['cnn_params']['l3']['init_scale'], **kwargs))
+
+        layer_6 = tf.nn.max_pool(value=layer_5, ksize=2, strides=[1,2,2,1], padding='VALID', data_format='NHWC')
+
+        # self.layer_6 = tf.contrib.layers.batch_norm(self.layer_6)
+
+        layer_7 = conv_to_fc(layer_6)
+
+        return activ(linear(layer_7, 'fc1', n_hidden=config['cnn_params']['fc']['n_hidden'], init_scale=config['cnn_params']['fc']['init_scale']))
+
+
+
+# def nature_cnn(scaled_images, **kwargs):
+#     """
+#     CNN from Nature paper.
+
+#     :param scaled_images: (TensorFlow Tensor) Image input placeholder
+#     :param kwargs: (dict) Extra keywords parameters for the convolutional layers of the CNN
+#     :return: (TensorFlow Tensor) The CNN output layer
+#     """
+#     with open('../stable-baselines/config.json', 'r') as f: 
+#         config = json.load(f)
+
+#     print("Scaled images shape: ", scaled_images.shape)
+
+#     activ = tf.nn.relu
+#     # scaled_images = tf.contrib.layers.batch_norm(scaled_images)
+#     layer_1 = activ(conv(scaled_images, 'c1', n_filters=config['cnn_params']['l1']['n_filters'], 
+#         filter_size=config['cnn_params']['l1']['filter_size'], stride=config['cnn_params']['l1']['stride'], 
+#         init_scale=config['cnn_params']['l1']['init_scale'], **kwargs))
+
+#     layer_2 = activ(conv(layer_1, 'c2', n_filters=config['cnn_params']['l2']['n_filters'], 
+#         filter_size=config['cnn_params']['l2']['filter_size'], stride=config['cnn_params']['l2']['stride'], 
+#         init_scale=config['cnn_params']['l2']['init_scale'], **kwargs))
+
+#     layer_3 = activ(conv(layer_2, 'c3', n_filters=config['cnn_params']['l3']['n_filters'], 
+#         filter_size=config['cnn_params']['l3']['filter_size'], stride=config['cnn_params']['l3']['stride'], 
+#         init_scale=config['cnn_params']['l3']['init_scale'], **kwargs))
+
+#     layer_3 = conv_to_fc(layer_3)
+
+#     return activ(linear(layer_3, 'fc1', n_hidden=config['cnn_params']['fc']['n_hidden'], init_scale=config['cnn_params']['fc']['init_scale']))
 
 
 # def nature_cnn(scaled_images, **kwargs):
