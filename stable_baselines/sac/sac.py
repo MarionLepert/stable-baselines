@@ -515,6 +515,7 @@ class SAC(OffPolicyRLModel):
 
                 # Store transition in the replay buffer.
                 self.replay_buffer_add(obs_, action, reward_, new_obs_, done, info, objState)
+
                 obs = new_obs
                 # Save the unnormalized observation
                 if self._vec_normalize_env is not None:
@@ -609,6 +610,12 @@ class SAC(OffPolicyRLModel):
                 # end_time = time.time()-start_time
                 # timeSummary = tf.Summary(value=[tf.Summary.Value(tag='trainTime', simple_value=end_time)])
                 # writer.add_summary(timeSummary, step)
+
+                # if ((len(self.env.intersection) + self.env.numCollisions) > 1000): 
+                #     print("INTERSECTION!!")
+                #     break;
+                # else: 
+                #     print((len(self.env.intersection) + self.env.numCollisions))
 
             callback.on_training_end()
             return self
