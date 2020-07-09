@@ -72,7 +72,7 @@ class SAC(OffPolicyRLModel):
                  gradient_steps=1, target_entropy='auto', action_noise=None,
                  random_exploration=0.0, verbose=0, tensorboard_log=None,
                  _init_setup_model=True, policy_kwargs=None, full_tensorboard_log=False,
-                 seed=None, n_cpu_tf_sess=None, pretrained_model=False, config=None):
+                 seed=None, n_cpu_tf_sess=None, pretrained_model=None, config=None):
 
         super(SAC, self).__init__(policy=policy, env=env, replay_buffer=None, verbose=verbose,
                                   policy_base=SACPolicy, requires_vec_env=False, policy_kwargs=policy_kwargs,
@@ -154,9 +154,9 @@ class SAC(OffPolicyRLModel):
                 with tf.variable_scope("input", reuse=False):
                     # Create policy and target TF objects
                     self.policy_tf = self.policy(self.sess, self.observation_space, self.action_space, 
-                                                config=self.config, **self.policy_kwargs)
+                                                config=self.config, pretrained_model=self.pretrained_model, **self.policy_kwargs)
                     self.target_policy = self.policy(self.sess, self.observation_space, self.action_space,
-                                                     config=self.config, **self.policy_kwargs)
+                                                     config=self.config, pretrained_model=self.pretrained_model, **self.policy_kwargs)
 
                     # Initialize Placeholders
                     self.observations_ph = self.policy_tf.obs_ph
@@ -344,7 +344,7 @@ class SAC(OffPolicyRLModel):
                 with self.sess.as_default():
                     self.sess.run(tf.global_variables_initializer())
 
-                    if self.pretrained_model: 
+                    if self.pretrained_model is not None: 
                         list_of_vars_to_load = ['cnn_model/BatchNorm/beta',
                                                 'cnn_model/BatchNorm/moving_mean',
                                                 'cnn_model/BatchNorm/moving_variance',
@@ -385,6 +385,8 @@ class SAC(OffPolicyRLModel):
         batch = self.replay_buffer.sample(self.batch_size, env=self._vec_normalize_env)
         batch_obs, batch_actions, batch_rewards, batch_next_obs, batch_dones, batch_objStates = batch
 
+        batch_objStates_array = np.array(batch_objStates)
+
         feed_dict = {
             self.observations_ph: batch_obs,
             self.actions_ph: batch_actions,
@@ -403,15 +405,19 @@ class SAC(OffPolicyRLModel):
         # Do one gradient step
         # and optionally compute log for tensorboard
         if writer is not None:
-            out = self.sess.run([self.summary] + self.step_ops + [self.policy_tf.model.layer_9], feed_dict)
-            coordinates_dict = {0: "X", 1: "Y", 2:"Theta", 3:"dX", 4:"dY", 5:"dTheta"}
-            num_coords = 6
-            for i in range(self.batch_size): 
+            if self.pretrained_model is not None: 
+                out = self.sess.run([self.summary] + self.step_ops + [self.policy_tf.model.layer_9], feed_dict)
+                coordinates_dict = {0: "X", 1: "Y", 2:"Theta", 3:"dX", 4:"dY", 5:"dTheta"}
+
+                num_coords = 6
+                error = np.linalg.norm(batch_objStates_array - out[-1], axis = 0)
+
                 for coord in range(num_coords): 
-                    diff = out[-1][i,coord] - batch_objStates[i][coord]
-                    coord_summary = tf.Summary(value=[tf.Summary.Value(tag=coordinates_dict[coord], simple_value=diff)])
-                    writer.add_summary(coord_summary, self.data_counter)
-                self.data_counter += 1
+                    coord_summary = tf.Summary(value=[tf.Summary.Value(tag=coordinates_dict[coord], simple_value=error[coord])])
+                    writer.add_summary(coord_summary, step)
+
+            else: 
+                out = self.sess.run([self.summary] + self.step_ops, feed_dict)
 
             summary = out.pop(0)
             writer.add_summary(summary, step)
@@ -701,9 +707,11 @@ class SAC(OffPolicyRLModel):
             "random_exploration": self.random_exploration,
             "_vectorize_action": self._vectorize_action,
             "policy_kwargs": self.policy_kwargs, 
-            "config": self.config, 
-            "pretrained_model": "/Users/marion/mnt/ws/planet/" + self.pretrained_model
+            "config": self.config
         }
+
+        if self.pretrained_model is not None: 
+            data["pretrained_model"] = "/Users/marion/mnt/ws/planet/" + self.pretrained_model
 
         params_to_save = self.get_parameters()
 

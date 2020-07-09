@@ -67,10 +67,12 @@ def apply_squashing_func(mu_, pi_, logp_pi):
 
 
 class CNNModel():
-    def __init__(self, config, target_space_shape):
+    def __init__(self, config, target_space_shape, pretrained_model):
         self.config = config
 
         self.target_space_shape = target_space_shape
+
+        self.pretrained_model = pretrained_model
 
     def conv(self, input_tensor, scope, *, n_filters, filter_size, stride,
              pad='SAME', init_scale=1.0, data_format='NHWC', one_dim_bias=False):
@@ -233,7 +235,10 @@ class CNNModel():
 
             self.layer_7 = self.conv_to_fc(self.layer_6)
 
-            self.layer_8 = tf.stop_gradient(activ(self.linear(self.layer_7, 'fc1', n_hidden=self.config['cnn_params']['fc']['n_hidden'], init_scale=self.config['cnn_params']['fc']['init_scale'])))
+            if self.pretrained_model is not None: 
+                self.layer_8 = tf.stop_gradient(activ(self.linear(self.layer_7, 'fc1', n_hidden=self.config['cnn_params']['fc']['n_hidden'], init_scale=self.config['cnn_params']['fc']['init_scale'])))
+            else: 
+                self.layer_8 = activ(self.linear(self.layer_7, 'fc1', n_hidden=self.config['cnn_params']['fc']['n_hidden'], init_scale=self.config['cnn_params']['fc']['init_scale']))
 
             # self.layer_8 = activ(self.linear(self.layer_7, 'fc1', n_hidden=self.config['cnn_params']['fc']['n_hidden'], init_scale=self.config['cnn_params']['fc']['init_scale']))
 
@@ -342,7 +347,7 @@ class FeedForwardPolicy(SACPolicy):
 
     def __init__(self, sess, ob_space, ac_space, n_env=1, n_steps=1, n_batch=None, reuse=False, layers=None,
                  cnn_extractor=nature_cnn, feature_extraction="cnn", reg_weight=0.0,
-                 layer_norm=False, act_fun=tf.nn.relu, config=None, target_shape=6, **kwargs):
+                 layer_norm=False, act_fun=tf.nn.relu, config=None, pretrained_model=None, target_shape=6, **kwargs):
         super(FeedForwardPolicy, self).__init__(sess, ob_space, ac_space, n_env, n_steps, n_batch,
                                                 reuse=reuse, scale=(feature_extraction == "cnn"))
 
@@ -352,14 +357,14 @@ class FeedForwardPolicy(SACPolicy):
         self.cnn_kwargs = kwargs
         self.cnn_extractor = cnn_extractor
         self.reuse = reuse
+        self.layers = layers
         if layers is None:
             layers = [512, 512]
-        self.layers = [512,512]
         self.reg_loss = None
         self.reg_weight = reg_weight
         self.entropy = None
 
-        self.model = CNNModel(config, target_shape)
+        self.model = CNNModel(config, target_shape, pretrained_model)
         self.cnn_extractor = self.model.cnn_architecture
 
         assert len(layers) >= 1, "Error: must have at least one hidden layer for the policy."

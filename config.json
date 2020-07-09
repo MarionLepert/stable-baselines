@@ -6,7 +6,8 @@
 		"batch_size": 32, 
 		"buffer_size": 1e5, 
 		"policy": "CnnPolicy", 
-		"policy_layers": [640,640]
+		"policy_layers": [640,640], 
+		"model": "./logs/7_8_18_1_x1_F2_96x96/models/"
 	}, 
 	"cnn_params" : {
 		"l1" : {
