@@ -1,12 +1,12 @@
 {
 	"run_params": {
-		"num_timesteps": 1e7, 
+		"num_timesteps": 2e4, 
 		"learning_rate": 0.0003, 
 		"learning_starts": 1000,
-		"batch_size": 16, 
-		"buffer_size": 1e5, 
+		"batch_size": 256, 
+		"buffer_size": 1e6, 
 		"policy": "MlpPolicy", 
-		"policy_layers": [64,64], 
+		"policy_layers": [512,512], 
 		"model": ""
 	}, 
 	"cnn_params" : {

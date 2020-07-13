@@ -237,12 +237,12 @@ class CNNModel():
 
             if self.pretrained_model is not None: 
                 self.layer_8 = tf.stop_gradient(activ(self.linear(self.layer_7, 'fc1', n_hidden=self.config['cnn_params']['fc']['n_hidden'], init_scale=self.config['cnn_params']['fc']['init_scale'])))
+                self.layer_9 = tf.stop_gradient(tf.layers.dense(self.layer_8, units=self.target_space_shape, activation=None))
             else: 
                 self.layer_8 = activ(self.linear(self.layer_7, 'fc1', n_hidden=self.config['cnn_params']['fc']['n_hidden'], init_scale=self.config['cnn_params']['fc']['init_scale']))
+                self.layer_9 = tf.layers.dense(self.layer_8, units=self.target_space_shape, activation=None)
 
             # self.layer_8 = activ(self.linear(self.layer_7, 'fc1', n_hidden=self.config['cnn_params']['fc']['n_hidden'], init_scale=self.config['cnn_params']['fc']['init_scale']))
-
-            self.layer_9 = tf.layers.dense(self.layer_8, units=self.target_space_shape, activation=None)
 
             # TODO FIX
             return self.layer_8, self.layer_9
