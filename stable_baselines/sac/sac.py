@@ -183,7 +183,7 @@ class SAC(OffPolicyRLModel):
                     #  Use two Q-functions to improve performance by reducing overestimation bias.
                     qf1, qf2, value_fn = self.policy_tf.make_critics(self.processed_obs_ph, self.actions_ph,
                                                                      create_qf=True, create_vf=True)
-
+                    
                     self._qf1 = qf1
                     self._qf2 = qf2
                     self._value_fn = value_fn
@@ -420,8 +420,9 @@ class SAC(OffPolicyRLModel):
                 out = self.sess.run([self.summary] + self.step_ops, feed_dict)
 
             summary = out.pop(0)
-            writer.add_summary(summary, step)
-
+            if (step % 10 == 0): 
+                writer.add_summary(summary, step)
+                
         else:
             out = self.sess.run(self.step_ops, feed_dict)
 
@@ -717,8 +718,8 @@ class SAC(OffPolicyRLModel):
             "config": self.config
         }
 
-        if self.pretrained_model is not None: 
-            data["pretrained_model"] = "/Users/marion/mnt/ws/planet/" + self.pretrained_model
+        # if self.pretrained_model is not None: 
+        #     data["pretrained_model"] = "/Users/marion/mnt/ws/planet/" + self.pretrained_model
 
         params_to_save = self.get_parameters()
 
